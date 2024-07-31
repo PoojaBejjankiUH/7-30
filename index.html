@@ -170,25 +170,25 @@
             <div class="col-9">
               <!-- Tab panes -->
               <div class="tab-content" id="programTabsContent">
-                <div id="course-add-container">
-                  <select id="year-select">
-                    <option value="" disabled selected>Select Year</option>
-                    <option value="0">Year 1</option>
-                    <option value="1">Year 2</option>
-                    <option value="2">Year 3</option>
-                    <option value="3">Year 4</option>
-                  </select>
-                  <select id="semester-select">
-                    <option value="" disabled selected>Select Semester</option>
-                    <option value="0">Semester 1 Fall</option>
-                    <option value="1">Semester 2 Spring</option>
-                  </select>
-                  <select id="course-select">
-                    <option value="" disabled selected>Select Course</option>
-        
-                  </select>
-                  <button id="add-course-button">Add Course</button>
-                </div>
+              </div>
+              <div id="course-add-container" class="mb-3">
+                <select id="year-select">
+                  <option value="" disabled selected>Select Year</option>
+                  <option value="0">Year 1</option>
+                  <option value="1">Year 2</option>
+                  <option value="2">Year 3</option>
+                  <option value="3">Year 4</option>
+                </select>
+                <select id="semester-select">
+                  <option value="" disabled selected>Select Semester</option>
+                  <option value="semesterFall">Semester 1 Fall</option>
+                  <option value="semesterSpring">Semester 2 Spring</option>
+                </select>
+                <select id="course-select">
+                  <option value="" disabled selected>Select Course</option>
+      
+                </select>
+                <button id="add-course-button" onclick="addCourseToAcademicMap()">Add Course</button>
               </div>
               <div id="years-container"></div>
             </div>
