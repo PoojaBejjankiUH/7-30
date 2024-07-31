@@ -1,3 +1,483 @@
+document.addEventListener("DOMContentLoaded", function() {
+    let courses = [];
+    let electives = {};
+    let semesterCourses = {}; // This can be used to store semester-specific courses if needed
+
+    // Load courses and electives from local storage or fetch from the JSON file
+    const storedCourses = localStorage.getItem('courseList');
+    const storedElectives = localStorage.getItem('electivesList');
+    if (storedCourses) {
+        courses = JSON.parse(storedCourses);
+        electives = storedElectives ? JSON.parse(storedElectives) : {};
+        displayAllCourses();
+        updateCategoryOptions();
+    } else {
+        fetch('data_version3.json')
+            .then(response => response.json())
+            .then(jsonData => {
+                courses = jsonData.courses || [];
+                electives = jsonData.electives || {};
+                updateLocalStorage(); // Store the combined list initially
+                displayAllCourses();
+                updateCategoryOptions();
+            })
+            .catch(error => console.error('Error fetching courses:', error));
+    }
+
+    function updateLocalStorage() {
+        localStorage.setItem('courseList', JSON.stringify(courses));
+        localStorage.setItem('electivesList', JSON.stringify(electives));
+    }
+
+    // Show and hide the course form
+    document.getElementById('showFormBtn').addEventListener('click', function() {
+        const courseForm = document.getElementById('courseForm');
+        if (courseForm.style.display === 'none' || courseForm.style.display === '') {
+            courseForm.style.display = 'block';
+            this.textContent = 'Hide Form';
+        } else {
+            courseForm.style.display = 'none';
+            this.textContent = 'Add New Course';
+        }
+    });
+
+    // Display all courses, including core and electives
+    function displayAllCourses() {
+        const courseContainer = document.querySelector("[data-yh-object='courses']");
+        courseContainer.innerHTML = ''; // Clear existing content
+
+        let allCourses = [...courses];
+        for (let category in electives) {
+            allCourses = [...allCourses, ...electives[category]];
+        }
+
+        allCourses.forEach((course, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" class="form-control" data-yh-field="courseCode" value="${course.courseCode}" readonly></td>
+                <td><input type="text" class="form-control" data-yh-field="courseName" value="${course.courseName}"></td>
+                <td><input type="text" class="form-control" data-yh-field="credits" value="${course.credits}"></td>
+                <td>
+                    <button type="button" class="btn btn-danger" onclick="deleteCourse(${index})">Delete</button>
+                    <button type="button" class="btn btn-warning" onclick="editCourse(${index})">Edit</button>
+                </td>
+            `;
+            courseContainer.appendChild(row);
+
+            // Event listeners for input fields (Two-Way Binding)
+            row.querySelectorAll('[data-yh-field]').forEach((input) => {
+                input.addEventListener('input', (event) => {
+                    const field = input.getAttribute('data-yh-field');
+                    if (index < courses.length) {
+                        courses[index][field] = event.target.value; // Update the data model for core courses
+                    } else {
+                        let electiveIndex = index - courses.length;
+                        for (let category in electives) {
+                            if (electiveIndex < electives[category].length) {
+                                electives[category][electiveIndex][field] = event.target.value;
+                                break;
+                            }
+                            electiveIndex -= electives[category].length;
+                        }
+                    }
+                    updateLocalStorage();
+                });
+            });
+        });
+    }
+
+    // Update category options for search and new course addition
+    function updateCategoryOptions() {
+        const categorySelect = document.getElementById('category');
+        categorySelect.innerHTML = `<option value="" disabled selected>Select Elective Category</option>`;
+        for (let category in electives) {
+            categorySelect.innerHTML += `<option value="${category}">${category.charAt(0).toUpperCase() + category.slice(1)}</option>`;
+        }
+        categorySelect.innerHTML += `<option value="other">Other (Specify below)</option>`;
+
+        const searchCategorySelect = document.getElementById('searchCategory');
+        searchCategorySelect.innerHTML = `<option value="" disabled selected>Select Elective Category</option>`;
+        for (let category in electives) {
+            searchCategorySelect.innerHTML += `<option value="${category}">${category.charAt(0).toUpperCase() + category.slice(1)}</option>`;
+        }
+    }
+
+    function showToast(message, type = 'success') {
+        const toastContainer = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-bg-${type} border-0`;
+        toast.role = 'alert';
+        toast.ariaLive = 'assertive';
+        toast.ariaAtomic = 'true';
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    ${message}
+                </div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        `;
+        toastContainer.appendChild(toast);
+        new bootstrap.Toast(toast).show();
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    }
+
+    // Delete a course
+    window.deleteCourse = function(index) {
+        if (confirm("Are you sure you want to delete this course?")) {
+            let courseToDelete = null;
+            if (index < courses.length) {
+                courseToDelete = courses[index];
+                courses.splice(index, 1);
+            } else {
+                let electiveIndex = index - courses.length;
+                for (let category in electives) {
+                    if (electiveIndex < electives[category].length) {
+                        courseToDelete = electives[category][electiveIndex];
+                        electives[category].splice(electiveIndex, 1);
+                        break;
+                    }
+                    electiveIndex -= electives[category].length;
+                }
+            }
+
+            if (courseToDelete) {
+                updateLocalStorage();
+                displayAllCourses(); // Refresh the course list
+                showToast('Course deleted successfully.', 'danger');
+            }
+        }
+    };
+
+    // Edit a course
+    window.editCourse = function(index) {
+        let course = null;
+        if (index < courses.length) {
+            course = courses[index];
+        } else {
+            let electiveIndex = index - courses.length;
+            for (let category in electives) {
+                if (electiveIndex < electives[category].length) {
+                    course = electives[category][electiveIndex];
+                    break;
+                }
+                electiveIndex -= electives[category].length;
+            }
+        }
+
+        if (course) {
+            document.getElementById('cc').value = course.courseCode || '';
+            document.getElementById('cn').value = course.courseName || '';
+            document.getElementById('ccre').value = course.credits || '';
+            document.getElementById('des').value = course.details ? course.details.description : '';
+
+            document.getElementById('submit').style.display = 'none';
+            document.getElementById('update').style.display = 'block';
+
+            document.getElementById('update').onclick = function() {
+                updateCourse(index);
+            };
+        }
+    };
+
+    // Update a course
+    function updateCourse(index) {
+        if (validateForm()) {
+            let courseData = {
+                courseCode: document.getElementById('cc').value,
+                courseName: document.getElementById('cn').value,
+                credits: document.getElementById('ccre').value,
+                details: {
+                    description: document.getElementById('des').value
+                }
+            };
+
+            if (index < courses.length) {
+                courses[index] = courseData;
+            } else {
+                let electiveIndex = index - courses.length;
+                for (let category in electives) {
+                    if (electiveIndex < electives[category].length) {
+                        electives[category][electiveIndex] = courseData;
+                        break;
+                    }
+                }
+            }
+
+            updateLocalStorage();
+            displayAllCourses(); // Refresh the course list
+            document.getElementById('submit').style.display = 'block';
+            document.getElementById('update').style.display = 'none';
+            resetForm();
+            showToast('Course updated successfully.', 'success');
+        }
+    }
+
+    // Add a new course
+    document.getElementById('submit').onclick = function() {
+        if (validateForm()) {
+            const courseType = document.getElementById('type').value;
+            let category = document.getElementById('category').value;
+
+            if (category === 'other') {
+                category = document.getElementById('newCategory').value.trim();
+                if (!category) {
+                    showToast('Please enter a new category name.', 'warning');
+                    return;
+                }
+                if (!electives[category]) {
+                    electives[category] = [];
+                }
+                updateCategoryOptions(); // Update category options after adding new category
+            }
+
+            const newCourse = {
+                courseCode: document.getElementById('cc').value,
+                courseName: document.getElementById('cn').value,
+                credits: document.getElementById('ccre').value,
+                type: courseType,
+                category: category,
+                details: {
+                    description: document.getElementById('des').value
+                }
+            };
+
+            if (isDuplicateCourse(newCourse.courseCode)) {
+                showToast('A course with this course code already exists.', 'warning');
+                return;
+            }
+
+            if (courseType === 'core') {
+                courses.push(newCourse);
+            } else if (courseType === 'elective' && category) {
+                if (!electives[category]) {
+                    electives[category] = [];
+                }
+                electives[category].push(newCourse);
+            }
+
+            updateLocalStorage();
+            displayAllCourses();
+            resetForm(); // Reset the form after adding the course
+            showToast('Course added successfully.', 'success');
+        }
+    };
+
+    // Check for duplicate course codes
+    function isDuplicateCourse(courseCode) {
+        if (courses.some(course => course.courseCode === courseCode)) {
+            return true;
+        }
+        for (let category in electives) {
+            if (electives[category].some(course => course.courseCode === courseCode)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Form validation
+    function validateForm() {
+        const ccode = document.getElementById("cc").value;
+        const cname = document.getElementById("cn").value;
+        const ccre = document.getElementById("ccre").value;
+        const des = document.getElementById("des").value;
+
+        if (ccode === "") {
+            showToast("Please enter Course Code", 'warning');
+            return false;
+        }
+        if (cname === "") {
+            showToast("Please enter Course Name", 'warning');
+            return false;
+        }
+        if (ccre === "") {
+            showToast("Please enter Course Credits", 'warning');
+            return false;
+        } else if (ccre < 1 || ccre > 4) {
+            showToast("Course credits must be between 1 and 4", 'warning');
+            return false;
+        }
+        if (des === "") {
+            showToast("Please enter Description", 'warning');
+            return false;
+        }
+        return true;
+    }
+
+    // Toggle category fields based on course type
+    document.getElementById('type').addEventListener('change', function() {
+        if (this.value === 'elective') {
+            document.getElementById('categoryContainer').style.display = 'block';
+        } else {
+            document.getElementById('categoryContainer').style.display = 'none';
+            document.getElementById('newCategoryContainer').style.display = 'none';
+        }
+    });
+
+    // Show new category input field if "other" is selected
+    document.getElementById('category').addEventListener('change', function() {
+        if (this.value === 'other') {
+            document.getElementById('newCategoryContainer').style.display = 'block';
+        } else {
+            document.getElementById('newCategoryContainer').style.display = 'none';
+        }
+    });
+
+    // Reset form fields
+    function resetForm() {
+        document.getElementById('cc').value = '';
+        document.getElementById('cn').value = '';
+        document.getElementById('ccre').value = '';
+        document.getElementById('lct').value = '';
+        document.getElementById('lbch').value = '';
+        document.getElementById('pre').value = '';
+        document.getElementById('rep').value = '';
+        document.getElementById('type').value = '';
+        document.getElementById('category').value = '';
+        document.getElementById('newCategory').value = '';
+        document.getElementById('note').value = '';
+        document.getElementById('tccns').value = '';
+        document.getElementById('add').value = '';
+        document.getElementById('des').value = '';
+        document.getElementById('categoryContainer').style.display = 'none';
+        document.getElementById('newCategoryContainer').style.display = 'none';
+    }
+
+    // Filter courses based on selection
+    document.getElementById('searchType').addEventListener('change', function() {
+        const selectedType = this.value;
+        const categoryContainer = document.getElementById('searchCategoryContainer');
+        if (selectedType === 'elective') {
+            categoryContainer.style.display = 'block';
+        } else {
+            categoryContainer.style.display = 'none';
+            filterCourses(selectedType, null);
+        }
+    });
+
+    document.getElementById('searchCategory').addEventListener('change', function() {
+        const selectedCategory = this.value;
+        filterCourses('elective', selectedCategory);
+    });
+
+    // Filter courses based on type and category
+    function filterCourses(type, selectedCategory) {
+        let filteredCourses = [];
+        if (type === 'core') {
+            filteredCourses = courses.filter(course => course.type === 'core');
+        } else if (type === 'elective') {
+            filteredCourses = [];
+            for (let category in electives) {
+                if (!selectedCategory || selectedCategory === category) {
+                    filteredCourses = [...filteredCourses, ...electives[category]];
+                }
+            }
+        } else {
+            filteredCourses = [...courses, ...Object.values(electives).flat()]; // Show all if 'all' is selected
+        }
+        displayFilteredCourses(filteredCourses);
+    }
+
+    // Display filtered courses
+    function displayFilteredCourses(filteredCourses) {
+        const courseContainer = document.querySelector("[data-yh-object='courses']");
+        courseContainer.innerHTML = ''; // Clear existing content
+        filteredCourses.forEach((course, index) => {
+            let row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" class="form-control" value="${course.courseCode}" readonly></td>
+                <td><input type="text" class="form-control" value="${course.courseName}"></td>
+                <td><input type="text" class="form-control" value="${course.credits}"></td>
+                <td>
+                    <button type="button" class="btn btn-danger" onclick="deleteCourse(${index})">Delete</button>
+                    <button type="button" class="btn btn-warning" onclick="editCourse(${index})">Edit</button>
+                </td>
+            `;
+            courseContainer.appendChild(row);
+        });
+    }
+
+    // Populate course dropdown based on selected year and semester
+    function populateCourseDropdown() {
+        const yearSelect = document.getElementById('year-select');
+        const semesterSelect = document.getElementById('semester-select');
+        const courseSelect = document.getElementById('course-select');
+
+        const year = yearSelect.value;
+        const semester = semesterSelect.value;
+
+        if (year === "" || semester === "") {
+            return;
+        }
+
+        // Fetch the available courses
+        const allCourses = [...courses, ...Object.values(electives).flat()];
+        
+        courseSelect.innerHTML = '<option value="" disabled selected>Select Course</option>';
+        allCourses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.courseCode;
+            option.textContent = `${course.courseCode} - ${course.courseName}`;
+            option.dataset.courseName = course.courseName;
+            option.dataset.credits = course.credits;
+            courseSelect.appendChild(option);
+        });
+    }
+
+    // Add course button click event
+    document.getElementById('add-course-button').addEventListener('click', addCourse);
+
+    function addCourse() {
+        const year = document.getElementById('year-select').value;
+        const semester = document.getElementById('semester-select').value;
+        const courseCode = document.getElementById('course-select').value;
+        const courseSelect = document.getElementById('course-select');
+
+        if (year === "" || semester === "" || courseCode === "") {
+            alert("Please select all fields");
+            return;
+        }
+
+        // Get course details from selected option
+        const selectedOption = courseSelect.options[courseSelect.selectedIndex];
+        const courseName = selectedOption.dataset.courseName;
+        const credits = selectedOption.dataset.credits;
+
+        const course = {
+            courseCode,
+            courseName,
+            credits
+        };
+
+        // Determine where to add the course based on the year and semester
+        const semesterId = `semester${parseInt(year) * 2 + parseInt(semester)}`;
+        
+        if (!semesterCourses[semesterId]) {
+            semesterCourses[semesterId] = [];
+        }
+        
+        semesterCourses[semesterId].push(course);
+
+        // Update local storage and UI
+        updateLocalStorage();
+        displayAllCourses(); // Refresh the course list
+
+        // Optionally, you can also clear the selection
+        document.getElementById('year-select').value = '';
+        document.getElementById('semester-select').value = '';
+        document.getElementById('course-select').value = '';
+    }
+
+    // Populate the course dropdown when year and semester are selected
+    document.getElementById('year-select').addEventListener('change', populateCourseDropdown);
+    document.getElementById('semester-select').addEventListener('change', populateCourseDropdown);
+
+    // Initial population of the course dropdown
+    populateCourseDropdown();
+});
+
+
 populateTables([],true);
 function populateTables(courseDetails, showDeleteButtons) {
     let totalCredits = [0, 0, 0, 0];
@@ -120,233 +600,4 @@ return localStorage.getItem('courseList');
 
 function getCoreCourses(){
     return localStorage.getItem('electivesList');
-}
-programs =[
-    {
-        "pid": "program1",
-        "name": "Engineering",
-        "years": [
-            {
-                "year": 1,
-                "semesters": [
-                    {
-                        "semester": "Fall",
-                        "courses": [
-                            "CHEM 1111",
-                            "CHEM 1311",
-                            "ENGI 1100",
-                            "ENGL 1301",
-                            "HIST 1301",
-                            "MATH 2413"
-                        ]
-                    },
-                    {
-                        "semester": "Spring",
-                        "courses": [
-                            "ENGI 1331",
-                            "ENGL 1302",
-                            "HIST 1302",
-                            "MATH 2414",
-                            "PHYS 2325",
-                            "PHYS 2125"
-                        ]
-                    }
-                ]
-            },
-            {
-                "year": 2,
-                "semesters": [
-                    {
-                        "semester": "Fall",
-                        "courses": [
-                            "ECE 2201",
-                            "MATH 2415",
-                            "MATH 3321",
-                            "PHYS 2326",
-                            "PHYS 2126",
-                            "GOVT 2306"
-                        ]
-                    },
-                    {
-                        "semester": "Spring",
-                        "courses": [
-                            "ENGI 2304",
-                            "ECE 2202",
-                            "ECE 2100",
-                            "ECE 3331",
-                            "ECE 3441",
-                            "CORE"
-                        ]
-                    }
-                ]
-            },
-            {
-                "year": 3,
-                "semesters": [
-                    {
-                        "semester": "Fall",
-                        "courses": [
-                            "COSC 1437",
-                            "ECE 3155",
-                            "ECE 3355",
-                            "ECE 3436",
-                            "ECE 3337",
-                            "ECE 3317"
-                        ]
-                    },
-                    {
-                        "semester": "Spring",
-                        "courses": [
-                            "MATH 3336",
-                            "ECE 5367",
-                            "ECE Elect/Lab",
-                            "INDE 2333",
-                            "ECON 2302"
-                        ]
-                    }
-                ]
-            },
-            {
-                "year": 4,
-                "semesters": [
-                    {
-                        "semester": "Fall",
-                        "courses": [
-                            "COSC 2436",
-                            "ECE 4335",
-                            "ECE 3457",
-                            "CpE Elect/Lab"
-                        ]
-                    },
-                    {
-                        "semester": "Spring",
-                        "courses": [
-                            "GOVT 2305",
-                            "ECE 4336",
-                            "CpE Elect/Lab",
-                            "COSC 4351",
-                            "CORE II"
-                        ]
-                    }
-                ]
-            }
-        ]
-    },
-    
-];
-
-
-  function populateCourseDropdown() {
-    const yearSelect = document.getElementById('year-select');
-    const semesterSelect = document.getElementById('semester-select');
-    const courseSelect = document.getElementById('course-select');
-
-    const year = yearSelect.value;
-    const semester = semesterSelect.value;
-
-    if (year === "" || semester === "") {
-        return;
-    }
-
-    const courseDetails = getCourseDetails();
-    const semesterId = `semester${parseInt(year) * 2 + parseInt(semester) + 1}`;
-    const existingCourses = courseDetails[semesterId] ? Object.keys(courseDetails[semesterId]) : [];
-
-    courseSelect.innerHTML = '<option value="" disabled selected>Select Course</option>';
-    const allCourses = Object.values(semesterCourses).reduce((acc, subs) => { return { ...acc, ...subs }; }, {});
-    coreCourses.concat(Object.values(allCourses
-        || {})).forEach(course => {
-            if (!existingCourses.includes(course.courseCode) && course.courseCode && course.courseName) {
-                const option = document.createElement('option');
-                option.value = course.courseCode;
-                option.textContent = `${course.courseCode} - ${course.courseName}`;
-                option.dataset.courseName = course.courseName;
-                option.dataset.credits = course.credits;
-                option.dataset.description = course.description;
-                option.dataset.lectureContactHours = course.lectureContactHours;
-                option.dataset.labContactHours = course.labContactHours;
-                option.dataset.prerequisite = course.prerequisite;
-                option.dataset.repeatability = course.repeatability;
-                option.dataset.note = course.note;
-                option.dataset.tccns = course.tccns;
-                option.dataset.additionalFee = course.additionalFee;
-                courseSelect.appendChild(option);
-            }
-        });
-    console.log('Course dropdown populated'); // Debug log
-}
-
-
-function addCourse() {
-    const year = document.getElementById('year-select').value;
-    const semester = document.getElementById('semester-select').value;
-    const courseCode = document.getElementById('course-select').value;
-    const courseDetails = getCourseDetails();
-    const coreCourses = getCoreCourses();
-    if (year === "" || semester === "" || courseCode === "") {
-        alert("Please select all fields");
-        return;
-    }
-
-    const course = coreCourses.find(c => c.courseCode === courseCode) || Object.values(semesterCourses[`semester${parseInt(year) * 2 + parseInt(semester) + 1}`] || {}).find(c => c.courseCode === courseCode);
-    const semesterId = `semester${parseInt(year) * 2 + parseInt(semester) + 1}`;
-
-    if (!courseDetails[semesterId]) {
-        courseDetails[semesterId] = {};
-    }
-
-    courseDetails[semesterId][courseCode] = {
-        courseName: course.courseName,
-        credits: course.credits,
-        description: course.description,
-        lectureContactHours: course.lectureContactHours,
-        labContactHours: course.labContactHours,
-        prerequisite: course.prerequisite,
-        repeatability: course.repeatability,
-        note: course.note,
-        tccns: course.tccns,
-        additionalFee: course.additionalFee
-    };
-
-    saveCourseDetails(courseDetails);
-    populateTables(courseDetails, isAdmin());
-}
-
-function createCourseRow(code, course, showDeleteButton) {
-    const row = document.createElement('tr');
-    const courseCodeCell = document.createElement('td');
-    courseCodeCell.className = 'clickable';
-    courseCodeCell.textContent = code;
-    courseCodeCell.onclick = () => showModal(course);
-
-    const courseNameCell = document.createElement('td');
-    courseNameCell.className = 'clickable';
-    courseNameCell.textContent = course.courseName;
-    courseNameCell.onclick = () => showModal(course);
-
-    const creditsCell = document.createElement('td');
-    creditsCell.textContent = course.credits;
-
-    const actionCell = document.createElement('td');
-    if (showDeleteButton) {
-        const deleteButton = document.createElement('button');
-        deleteButton.textContent = '✖'; // Cross button
-        deleteButton.onclick = () => {
-            deleteRow(row, code, course.credits);
-        };
-        actionCell.appendChild(deleteButton);
-
-        const editButton = document.createElement('button');
-        editButton.textContent = '✎'; // Edit button
-        editButton.onclick = () => {
-            openEditModal(code, course);
-        };
-        actionCell.appendChild(editButton);
-    }
-    row.appendChild(courseCodeCell);
-    row.appendChild(courseNameCell);
-    row.appendChild(creditsCell);
-    if (showDeleteButton) row.appendChild(actionCell);
-
-    return row;
 }
